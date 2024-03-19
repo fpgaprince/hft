@@ -468,22 +468,22 @@ entity tcp_header is
         clk                     : in  std_logic;
         rst                     : in  std_logic;
 
-        fix_rdy                 : in  std_logic;            -- this is kickedoff while fix4.2 checksum is being calculated
+
         fix_data_checksum       : in std_logic_vector (31 downto 0);
         o_tcp_rdy               : out std_logic;
 
         -- tcp header output checksum output =>
-        o_tcp_header          : out std_logic_vector(63 downto 0);    -- 8 bytes
-        o_data_valid          : out std_logic;
-        o_data_keep           : out std_logic_vector(7 downto 0);
+        o_tcp_header            : out std_logic_vector(63 downto 0);    -- 8 bytes
+        o_data_valid            : out std_logic;
+        o_data_keep             : out std_logic_vector(7 downto 0);
 
-        hdr_data_valid      : in std_logic;
+        hdr_data_valid          : in  std_logic;            -- this is kickedoff while fix4.2 checksum is being calculated
         --everything below =>  put into a record
         --pseudo header info
-        src_ip_addr       : in std_logic_vector(31 downto 0);
-        dest_ip_addr      : in std_logic_vector(31 downto 0);
-        ip_protocol       : in std_logic_vector(7 downto 0);            -- := x"04";  --ipv4
-        tcp_len           : in std_logic_vector(15 dwonto 0);           -- up to 65,535bytes - 20bytes for tcp header.
+        src_ip_addr             : in std_logic_vector(31 downto 0);
+        dest_ip_addr            : in std_logic_vector(31 downto 0);
+        ip_protocol             : in std_logic_vector(7 downto 0);            -- := x"04";  --ipv4
+        tcp_len                 : in std_logic_vector(15 dwonto 0);           -- up to 65,535bytes - 20bytes for tcp header.
         --tcp header
         src_port              : in std_logic_vector(15 downto 0);
         dest_port             : in std_logic_vector(15 downto 0);
@@ -607,7 +607,8 @@ begin
             end if;
         end if;
     end process;
-  end rtl;
+
+end rtl;
 
 
     process(all) begin
