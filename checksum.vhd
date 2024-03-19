@@ -7,7 +7,7 @@ entity ipv4_checksum_checker
     i_data_in       : in std_logic_vector(64 downto 0);
     i_data_valid    : in std_logic;                          --header valid.
     -- ASSUME valid will be asserted for entirety of IP packet.. but we only care about first 5words, 20bytes.
-    o_checksum_good : out std_logic;
+    o_ipv4_header_good : out std_logic;
 
 end entity;
 
@@ -50,7 +50,7 @@ process (all) begin
     end if;
 end process;
 
-o_checksum_good <= checksum_good;
+o_ipv4_header_good <= checksum_good;
 
 --note to self
 -- 0 1 2 3 4. during 2nd, do not use checksum in calc.
@@ -157,12 +157,13 @@ entity ipv4_header is
     port (
         clk                 : in  std_logic;
         rst                 : in  std_logic;
-        tcp_ready           : in  std_logic;
-        
-        o_checksum          : out std_logic_vector(63 downto 0);
+        tcp_rdy           : in  std_logic;
+
+        o_ipv4_header          : out std_logic_vector(63 downto 0);
         o_data_valid        : out std_logic;
         o_data_keep         : out std_logic_vector(7 downto 0);
         --
+        --everything below =>  put into a record
         version             : in std_logic_vector(3 downto 0);
         ihl                 : in std_logic_vector(3 downto 0);      -- 0 for simplification
         dscp                : in std_logic_vector(5 downto 0);
@@ -171,13 +172,13 @@ entity ipv4_header is
         total_length        : in std_logic_vector(15 downto 0);     -- determined by algo/fix block
         --
         identification      : in std_logic_vector(15 downto 0);
-        --        
+        --
         flags               : in std_logic_vector(2 downto 0);
         fragment_offset     : in std_logic_vector(12 downto 0);
 
         time_to_live        : in std_logic_vector(7 downto 0);      -- external timer block
 
-        protocol            : in std_logic_vector(7 downto 0);      --constant
+        ip_protocol            : in std_logic_vector(7 downto 0);      --constant
 
         src_ip_addr         : in std_logic_vector(31 downto 0);
         dest_ip_addr        : in std_logic_vector(31 downto 0)
@@ -192,7 +193,7 @@ entity ipv4_header is
     -- a
     signal ip_hdr_00, ip_hdr_01 : std_logic_vector(15 downto 0);
     signal ip_hdr_10, ip_hdr_11 : std_logic_vector(15 downto 0);
-    signal ip_hdr_20, ip_hdr_21 : std_logic_vector(15 downto 0);
+    signal ip_hdr_20, ip_hdr_21 : std_logic_vector(7 downto 0);
 
     signal sum0, sum1, sum01, sum2 : std_logic_vector(47 downto 0);
     signal sum2 : std_logic_vector(31 downto 0);
@@ -214,16 +215,16 @@ entity ipv4_header is
             ip_hdr_01 <= total_length;
 
             ip_hdr_10 <= identification;
-            ip_hdr_11 <= flags & fragment_offset;     
+            ip_hdr_11 <= flags & fragment_offset;
 
-            -- ip_hdr_20 <= x"00" & protocol;          -- leave out TTL 
-            -- ip_hdr_21 <= ip_checksum;             
-            
+            ip_hdr_20 <= x"00" & protocol;          -- leave out TTL
+            -- ip_hdr_21 <= ip_checksum;
+
             ip_hdr_30 <= src_ip_addr(31 downto 16);
-            ip_hdr_31 <= src_ip_addr(15 downto 0);      
-            
+            ip_hdr_31 <= src_ip_addr(15 downto 0);
+
             ip_hdr_40 <= dest_ip_addr(31 downto 16);
-            ip_hdr_41 <= dest_ip_addr(15 downto 0);               
+            ip_hdr_41 <= dest_ip_addr(15 downto 0);
 
         end if;
     end process;
@@ -231,21 +232,21 @@ entity ipv4_header is
     process(clk) begin
         if risinge_edge(clk) then
             --1clk  --16s into 32
-            sum0 <= ip_hdr_00 + ip_hdr_01;                        
-            sum1 <= ip_hdr_10 + ip_hdr_11;       
-            -- sum2 is held off, and you checksum field set to 0 for calc         
+            sum0 <= ip_hdr_00 + ip_hdr_01;
+            sum1 <= ip_hdr_10 + ip_hdr_11;
+            -- sum2 is held off, and you checksum field set to 0 for calc
             sum3 <= ip_hdr_30 + ip_hdr_31;
             sum4 <= ip_hdr_40 + ip_hdr_41;
 
             --2clk  -- 32s into 32
-            sum01 <= sum0 + sum1;           
+            sum01 <= sum0 + sum1;
             sum34 <= sum3 + sum4;
 
             --3clk
             sum0134 <= sum01 + sum34;
 
             --4clk
-            sum6 <= sum0134 + x"000_0000" & protocol;
+            sum6 <= sum0134 + x"0000" & ip_hdr_20;
 
             --5clk  -- take care of carry, 16b
             sum7 <= sum6(31 downto 16) + sum6(15 downto 0);
@@ -258,43 +259,43 @@ entity ipv4_header is
         if rising_edge(clk) then
             if (rst = '1') then
                 ip_state <= IDLE;
-                o_checksum <= (others => '0');
+                o_ipv4_header <= (others => '0');
                 o_keep <= (others => '0');
                 o_data_valid <= '0';
             else
                 case (ip_state) is
                     when IDLE =>
-                        if (i_tcp_ready = '1') then
-                            ip_hdr_20 <= time_to_live & protocol;  -- store here so same as what is used for calc
+                        if (i_tcp_rdy = '1') then
+                            ip_hdr_20 <= time_to_live;  -- store here so same as what is used for calc
                             pre_sum <= sum7 + time_to_live & x"00";
-                            ip_state <= carry;
+                            ip_state <= CALC_CARRY;
                         end if;
 
                     when CALC_CARRY =>
                         ip_hdr_checksum <= pre_sum(19 downto 16) + pre_sum(15 downto 0);
 
-                        ip_state <= send_HDR1;
+                        ip_state <= SEND_HDR1;
 
                     when SEND_HDR1 =>
-                        o_checksum <=   ip_hdr_00 & ip_hdr_01 & ip_hdr_10 & ip_hdr_11;
+                        o_ipv4_header <=   ip_hdr_00 & ip_hdr_01 & ip_hdr_10 & ip_hdr_11;
                         o_keep <= x"1111_1111";
                         o_data_valid <= '1';
 
-                        ip_state <= send_HDR2;
+                        ip_state <= SEND_HDR2;
 
                     when SEND_HDR2 =>
-                        o_checksum <= ip_hdr_20 & ip_hdr_checksum & ip_hdr_30 & ip_hdr_31;
+                        o_ipv4_header <= ip_hdr_20 & ip_protocol & ip_hdr_checksum & ip_hdr_30 & ip_hdr_31;
                         o_keep <= x"1111_1111";
                         o_data_valid <= '1';
 
                         ip_state <= SEND_HDR3;
 
                     when SEND_HDR3 =>
-                        o_checksum <= ip_hdr_40 & ip_hdr_41 & x"0000_0000";     -- do i need to send a keep signal? yes => eth_mac has data_in keep
+                        o_ipv4_header <= ip_hdr_40 & ip_hdr_41 & x"0000_0000";     -- do i need to send a keep signal? yes => eth_mac has data_in keep
                         o_keep <= x"1111_0000";
                         o_data_valid <= '1';
 
-                        ip_state <= IDLE;                        
+                        ip_state <= IDLE;
 
                     when others =>
                         o_keep <= x"0000_0000";
@@ -449,56 +450,174 @@ next cycle IP block sends out 64b of the header.. to eth mac
 
 
 
+library ieee, work;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 -- this will be part of some larger tcp state machine
 -- state machine will determine segment size, tcp length.
 -- data must be completely collected first in order to calculate checksum.
-entity tcp_checksum_sender is
+entity tcp_header is
     generic (
 
     );
     port (
-      clk                     : in  std_logic;
-      rst                     : in  std_logic;
+        clk                     : in  std_logic;
+        rst                     : in  std_logic;
 
-      src_ip_addr       : in std_logic_vector(31 downto 0) := x"AABB_CCDD";
-      dest_ip_addr      : in std_logic_vector(31 downto 0) := x"AABB_CCDD";
-      ip_protocol       : in std_logic_vector(7 downto 0) := x"04";  --ipv4
-      tcp_len           : in std_logic_vector(15 dwonto 0);         -- up to 65,535bytes - 20bytes for tcp header.
+        fix_rdy                 : in  std_logic;
+        fix_data_checksum          : in std_logic_vector (31 downto 0);
 
-      src_port              : in std_logic_vector(15 downto 0);
-      dest_port             : in std_logic_vector(15 downto 0);
-      seq_num               : in std_logic_vector(31 downto 0);
-      ack_num               : in std_logic_vector(31 downto 0);
+    -- tcp header output checksum output =>
+        o_tcp_header          : out std_logic_vector(63 downto 0);    -- 8 bytes
+        o_data_valid          : out std_logic;
+        o_data_keep           : out std_logic_vector(7 downto 0);
 
-      data_offset           : in std_logic_vector(3 downto 0);
-      --reserved 3downto0 4bits..
-      flags                 : in std_logic_vector(7 downto 0);
-      window                : in std_logic_vector(15 downto 0);
-      urg_ptr               : in std_logic_vector(15 downto 0);
+        --everything below =>  put into a record
+        --pseudo header info
+        src_ip_addr       : in std_logic_vector(31 downto 0) := x"AABB_CCDD";
+        dest_ip_addr      : in std_logic_vector(31 downto 0) := x"AABB_CCDD";
+        ip_protocol       : in std_logic_vector(7 downto 0) := x"04";  --ipv4
+        tcp_len           : in std_logic_vector(15 dwonto 0);         -- up to 65,535bytes - 20bytes for tcp header.
+        --tcp header
+        src_port              : in std_logic_vector(15 downto 0);
+        dest_port             : in std_logic_vector(15 downto 0);
+        seq_num               : in std_logic_vector(31 downto 0);
+        ack_num               : in std_logic_vector(31 downto 0);
 
-      partial_data_checksum     : in std_logic_vector (31 downto 0);
-    --   data_in                 : in  std_logic_vector(63 downto 0);    -- 8 bytes
-      data_in_valid           : in  std_logic;
-      data_in_last            : in  std_logic;
-      data_in_keep            : in  std_logic_vector(7 downto 0);
+        data_offset           : in std_logic_vector(3 downto 0);
+        --reserved 3downto0 4bits..
+        flags                 : in std_logic_vector(7 downto 0);
+        window_size                : in std_logic_vector(15 downto 0);
+        urg_ptr               : in std_logic_vector(15 downto 0)
 
-        -- tcp header output checksum output =>
-      data_out                : out std_logic_vector(63 downto 0);    -- 8 bytes
-      data_out_valid          : out std_logic
-    --   data_out_last           : out std_logic;
-    --   data_out_keep           : out std_logic_vector(7 downto 0)
     );
-end entity tcp_checksum_sender;
+end entity tcp_header;
 
-architecture rtl of tcp_checksum_sender is
+architecture rtl of tcp_header is
     signal sum0, sum1, sum2, sum3   : std_logic_vector(35 downto 0);
     signal sum01, sum23             : std_logic_vector(35 downto 0);
     signal susum0123                : std_logic_vector(35 downto 0);
     signal sum_fold                : std_logic_vector(19 downto 0);
 
-
-
+    type state_type is (IDLE, CALC_CARRY, SEND_HDR1, SEND_HDR2, SEND_HDR3);
+    signal ip_state : state_type := IDLE;    
 begin
+
+    process(clk) begin
+        if risinge_edge(clk) then
+            psedu_ip_hdr00
+            psedu_ip_hdr01
+
+            psedu_ip_hdr10
+            psedu_ip_hdr11
+
+            psedu_ip_hdr20
+            psedu_ip_hdr21
+
+            tcp_hdr_00 <= src_port;
+            tcp_hdr_01 <= dest_port;
+
+            tcp_hdr_10 <= seq_num(31 downto 16);
+            tcp_hdr_11 <= seq_num(15 downto 0);
+
+            tcp_hdr_20 <= ack_num(31 downto 16);
+            tcp_hdr_21 <= ack_num(15 downto 0);
+
+            tcp_hdr_30 <= data_offset & x"0" & flags;
+            tcp_hdr_31 <= window_size;
+
+            -- tcp_hdr_40 <= dest_tcp_addr(31 downto 16);
+            tcp_hdr_41 <= urg_ptr;
+
+        end if;
+    end process;
+
+    process(clk) begin
+        if risinge_edge(clk) then
+            --1clk  --16s into 32
+            sum0 <= tcp_hdr_00 + tcp_hdr_01;
+            sum1 <= tcp_hdr_10 + tcp_hdr_11;
+            sum2 <= tcp_hdr_20 + tcp_hdr_21;
+            sum3 <= tcp_hdr_30 + tcp_hdr_31;
+            -- sum4 <= tcp_hdr_40 + tcp_hdr_41;
+
+            --2clk  -- 32s into 32
+            sum01 <= sum0 + sum1;
+            sum23 <= sum2 + sum3;
+
+            --3clk
+            sum0123 <= sum01 + sum23;
+
+            --4clk
+            sum6 <= sum0134 + x"0000" & tcp_hdr_41;
+
+            --5clk  -- take care of carry, 16b
+            sum7 <= sum6(31 downto 16) + sum6(15 downto 0);
+
+        end if;
+    end process;
+
+
+
+    --this step occurs when TCP is done bc we need TTL to be most fresh
+    process(clk) begin
+        if rising_edge(clk) then
+            if (rst = '1') then
+                tcp_state <= IDLE;
+                o_tcp_header <= (others => '0');
+                o_keep <= (others => '0');
+                o_data_valid <= '0';
+            else
+                case (tcp_state) is
+                    when IDLE =>
+                        if (i_tcp_rdy = '1') then
+                            tcp_hdr_40 <= fix_data_checksum;  -- store here so same as what is used for calc
+                            pre_sum <= sum7 + fix_data_checksum;
+                            tcp_state <= CALC_CARRY;
+                        end if;
+
+                    when CALC_CARRY =>
+                        tcp_hdr_checksum <= pre_sum(19 downto 16) + pre_sum(15 downto 0);
+
+                        tcp_state <= SEND_HDR1;
+
+                    when SEND_HDR1 =>
+                        o_tcp_header <=   ip_hdr_00 & ip_hdr_01 & ip_hdr_10 & ip_hdr_11;
+                        o_keep <= x"1111_1111";
+                        o_data_valid <= '1';
+
+                        tcp_state <= SEND_HDR2;
+
+                    when SEND_HDR2 =>
+                        o_tcp_header <= ip_hdr_20 & ip_protocol & ip_hdr_checksum & ip_hdr_30 & ip_hdr_31;
+                        o_keep <= x"1111_1111";
+                        o_data_valid <= '1';
+
+                        tcp_state <= SEND_HDR3;
+
+                    when SEND_HDR3 =>
+                        o_tcp_header <= ip_hdr_40 & ip_hdr_41 & x"0000_0000";     -- do i need to send a keep signal? yes => eth_mac has data_in keep
+                        o_keep <= x"1111_0000";
+                        o_data_valid <= '1';
+
+                        tcp_state <= IDLE;
+
+                    when others =>
+                        o_keep <= x"0000_0000";
+                        o_data_valid <= '0';
+                        tcp_state <= IDLE;
+
+                end case;
+            end if;
+        end if;
+    end process;
+  end rtl;
+
+
+
+
+
+
 
         case (state_hdr) is
             when HDR_IDLE =>
