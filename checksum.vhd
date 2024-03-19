@@ -468,7 +468,7 @@ entity tcp_header is
         clk                     : in  std_logic;
         rst                     : in  std_logic;
 
-        fix_rdy                 : in  std_logic;
+        fix_rdy                 : in  std_logic;            -- this is kickedoff while fix4.2 checksum is being calculated
         fix_data_checksum       : in std_logic_vector (31 downto 0);
         o_tcp_rdy               : out std_logic;
 
@@ -477,6 +477,7 @@ entity tcp_header is
         o_data_valid          : out std_logic;
         o_data_keep           : out std_logic_vector(7 downto 0);
 
+        hdr_data_valid      : in std_logic;
         --everything below =>  put into a record
         --pseudo header info
         src_ip_addr       : in std_logic_vector(31 downto 0);
@@ -492,7 +493,7 @@ entity tcp_header is
         data_offset           : in std_logic_vector(3 downto 0);
         --reserved 3downto0 4bits..
         flags                 : in std_logic_vector(7 downto 0);
-        window_size                : in std_logic_vector(15 downto 0);
+        window_size           : in std_logic_vector(15 downto 0);
         urg_ptr               : in std_logic_vector(15 downto 0)
 
     );
@@ -508,32 +509,34 @@ architecture rtl of tcp_header is
     signal ip_state : state_type := IDLE;    
 begin
 
+    --pre calc the pseudo header and actual header, leaving the datachecksum for
     process(clk) begin
         if risinge_edge(clk) then
-            psedu_ip_hdr00 <= src_ip_addr(31 downto 16);
-            psedu_ip_hdr01 <= src_ip_addr(15 downto 0);
+            if (hdr_data_valid = '1') then
+                psedu_ip_hdr00 <= src_ip_addr(31 downto 16);
+                psedu_ip_hdr01 <= src_ip_addr(15 downto 0);
 
-            psedu_ip_hdr10 <= dest_ip_addr(31 downto 16);
-            psedu_ip_hdr11 <= dest_ip_addr(15 downto 0);
+                psedu_ip_hdr10 <= dest_ip_addr(31 downto 16);
+                psedu_ip_hdr11 <= dest_ip_addr(15 downto 0);
 
-            psedu_ip_hdr20 <= x"00" & ip_protocol;
-            psedu_ip_hdr21 <= tcp_len;
+                psedu_ip_hdr20 <= x"00" & ip_protocol;
+                psedu_ip_hdr21 <= tcp_len;
 
-            tcp_hdr_00 <= src_port;
-            tcp_hdr_01 <= dest_port;
+                tcp_hdr_00 <= src_port;
+                tcp_hdr_01 <= dest_port;
 
-            tcp_hdr_10 <= seq_num(31 downto 16);
-            tcp_hdr_11 <= seq_num(15 downto 0);
+                tcp_hdr_10 <= seq_num(31 downto 16);
+                tcp_hdr_11 <= seq_num(15 downto 0);
 
-            tcp_hdr_20 <= ack_num(31 downto 16);
-            tcp_hdr_21 <= ack_num(15 downto 0);
+                tcp_hdr_20 <= ack_num(31 downto 16);
+                tcp_hdr_21 <= ack_num(15 downto 0);
 
-            tcp_hdr_30 <= data_offset & x"0" & flags;
-            tcp_hdr_31 <= window_size;
+                tcp_hdr_30 <= data_offset & x"0" & flags;
+                tcp_hdr_31 <= window_size;
 
-            -- tcp_hdr_40 <= dest_tcp_addr(31 downto 16);
-            tcp_hdr_41 <= urg_ptr;
-
+                -- tcp_hdr_40 <= dest_tcp_addr(31 downto 16);
+                tcp_hdr_41 <= urg_ptr;
+            end if;
         end if;
     end process;
 
@@ -573,58 +576,31 @@ begin
         end if;
     end process;
 
-
-
-    --this step occurs when TCP is done bc we need TTL to be most fresh
+    --this step occurs when tcp datacheck calculation is complete/ready
     process(clk) begin
         if rising_edge(clk) then
             if (rst = '1') then
                 tcp_state <= IDLE;
-                o_tcp_header <= (others => '0');
-                o_keep <= (others => '0');
-                o_data_valid <= '0';
-                o_data_last <= '0';
-                o_tcp_rdy <= '0';
             else
                 case (tcp_state) is
                     when IDLE =>
-                        if (i_tcp_rdy = '1') then
+                        if (fix_rdy = '1') then
                             tcp_hdr_40 <= fix_data_checksum;  -- store here so same as what is used for calc
                             pre_sum <= sum7 + fix_data_checksum;
                             tcp_state <= CALC_CARRY;
-
-                            -- HDR0: we can start outputting the header bc calc doesn't depend on this
-                            o_tcp_header <=   tcp_hdr_00 & tcp_hdr_01 & tcp_hdr_10 & tcp_hdr_11;
-                            o_keep <= x"1111_1111";
-                            o_data_valid <= '1';
                         end if;
 
                     when CALC_CARRY =>
                         tcp_hdr_checksum <= pre_sum(19 downto 16) + pre_sum(15 downto 0);
 
-                        -- HDR1:
-                        o_tcp_header <= tcp_hdr_20 & tcp_hdr_21 & ip_hdr_30 & ip_hdr_31;
-                        o_keep <= x"1111_1111";
-                        o_data_valid <= '1';
-
                         tcp_state <= SEND_HDR0;
 
                     when SEND_HDR2 =>
                         o_tcp_header <= tcp_hdr_checksum & ip_hdr_41 & x"0000_0000";
-                        
-                        o_keep <= x"1111_1111";
-                        o_data_valid <= '1';
-                        o_data_last <= '1';
-                        o_tcp_rdy <= '1';
-
+                    
                         tcp_state <= IDLE;
 
                     when others =>
-                        o_keep <= x"0000_0000";
-                        o_data_valid <= '0';
-                        o_data_last <= '0';
-                        o_tcp_rdy <= '0';
-
                         tcp_state <= IDLE;
 
                 end case;
@@ -634,7 +610,52 @@ begin
   end rtl;
 
 
+    process(all) begin
+        case (tcp_state) is
+            when IDLE =>
+                if (fix_rdy = '1') then
+                    -- HDR0: we can start outputting the header bc calc doesn't depend on this
+                    o_tcp_header <=   tcp_hdr_00 & tcp_hdr_01 & tcp_hdr_10 & tcp_hdr_11;
+                    o_keep <= x"1111_1111";
+                    o_data_valid <= '1';
+                    o_data_last <= '0';
+                    o_tcp_rdy <= '0';
+                else 
+                    o_tcp_header <= (others '0');
+                    o_keep <= x"0000_0000";
+                    o_data_valid <= '0';
+                    o_data_last <= '0';
+                    o_tcp_rdy <= '0';
+                end if;
 
+            when CALC_CARRY =>
+                -- HDR1:
+                o_tcp_header <= tcp_hdr_20 & tcp_hdr_21 & ip_hdr_30 & ip_hdr_31;
+                o_keep <= x"1111_1111";
+                o_data_valid <= '1';
+                o_data_last <= '0';
+                o_tcp_rdy <= '0';
+
+            when SEND_HDR2 =>
+                o_tcp_header <= tcp_hdr_checksum & ip_hdr_41 & x"0000_0000";
+            
+                o_keep <= x"1111_1111";
+                o_data_valid <= '1';
+                o_data_last <= '1';
+                o_tcp_rdy <= '1';
+
+            when others =>
+                o_tcp_header <= (others '0');
+                o_keep <= x"0000_0000";
+                o_data_valid <= '0';
+                o_data_last <= '0';
+                o_tcp_rdy <= '0';
+
+        end case;
+    end process;
+end rtl;  
+
+-- you need to make the output combinatorial or zero delay
 
 
 
