@@ -157,11 +157,12 @@ entity ipv4_header is
     port (
         clk                 : in  std_logic;
         rst                 : in  std_logic;
-        tcp_rdy           : in  std_logic;
+        tcp_rdy             : in  std_logic;
 
-        o_ipv4_header          : out std_logic_vector(63 downto 0);
+        o_ipv4_header       : out std_logic_vector(63 downto 0);
         o_data_valid        : out std_logic;
         o_data_keep         : out std_logic_vector(7 downto 0);
+        o_data_last         : out std_logic;
         --
         --everything below =>  put into a record
         version             : in std_logic_vector(3 downto 0);
@@ -178,7 +179,7 @@ entity ipv4_header is
 
         time_to_live        : in std_logic_vector(7 downto 0);      -- external timer block
 
-        ip_protocol            : in std_logic_vector(7 downto 0);      --constant
+        ip_protocol         : in std_logic_vector(7 downto 0);      --constant
 
         src_ip_addr         : in std_logic_vector(31 downto 0);
         dest_ip_addr        : in std_logic_vector(31 downto 0)
@@ -262,6 +263,8 @@ entity ipv4_header is
                 o_ipv4_header <= (others => '0');
                 o_keep <= (others => '0');
                 o_data_valid <= '0';
+                o_data_last <= '0';
+
             else
                 case (ip_state) is
                     when IDLE =>
@@ -269,21 +272,18 @@ entity ipv4_header is
                             ip_hdr_20 <= time_to_live;  -- store here so same as what is used for calc
                             pre_sum <= sum7 + time_to_live & x"00";
                             ip_state <= CALC_CARRY;
+
+                            --HDR0
+                            o_ipv4_header <=   ip_hdr_00 & ip_hdr_01 & ip_hdr_10 & ip_hdr_11;
+                            o_keep <= x"1111_1111";
+                            o_data_valid <= '1';
+    
                         end if;
 
                     when CALC_CARRY =>
                         ip_hdr_checksum <= pre_sum(19 downto 16) + pre_sum(15 downto 0);
 
-                        ip_state <= SEND_HDR0;
-
-                    when SEND_HDR0 =>
-                        o_ipv4_header <=   ip_hdr_00 & ip_hdr_01 & ip_hdr_10 & ip_hdr_11;
-                        o_keep <= x"1111_1111";
-                        o_data_valid <= '1';
-
-                        ip_state <= SEND_HDR1;
-
-                    when SEND_HDR1 =>
+                        --HDR1
                         o_ipv4_header <= ip_hdr_20 & ip_protocol & ip_hdr_checksum & ip_hdr_30 & ip_hdr_31;
                         o_keep <= x"1111_1111";
                         o_data_valid <= '1';
@@ -294,12 +294,16 @@ entity ipv4_header is
                         o_ipv4_header <= ip_hdr_40 & ip_hdr_41 & x"0000_0000";     -- do i need to send a keep signal? yes => eth_mac has data_in keep
                         o_keep <= x"1111_0000";
                         o_data_valid <= '1';
+                        o_data_last <= '1';
 
                         ip_state <= IDLE;
 
                     when others =>
+                        o_ipv4_header <= (others => '0');
                         o_keep <= x"0000_0000";
                         o_data_valid <= '0';
+                        o_data_last <= '0';
+
                         ip_state <= IDLE;
 
                 end case;
@@ -465,7 +469,8 @@ entity tcp_header is
         rst                     : in  std_logic;
 
         fix_rdy                 : in  std_logic;
-        fix_data_checksum          : in std_logic_vector (31 downto 0);
+        fix_data_checksum       : in std_logic_vector (31 downto 0);
+        o_tcp_rdy               : out std_logic;
 
         -- tcp header output checksum output =>
         o_tcp_header          : out std_logic_vector(63 downto 0);    -- 8 bytes
@@ -578,6 +583,8 @@ begin
                 o_tcp_header <= (others => '0');
                 o_keep <= (others => '0');
                 o_data_valid <= '0';
+                o_data_last <= '0';
+                o_tcp_rdy <= '0';
             else
                 case (tcp_state) is
                     when IDLE =>
@@ -585,37 +592,39 @@ begin
                             tcp_hdr_40 <= fix_data_checksum;  -- store here so same as what is used for calc
                             pre_sum <= sum7 + fix_data_checksum;
                             tcp_state <= CALC_CARRY;
+
+                            -- HDR0: we can start outputting the header bc calc doesn't depend on this
+                            o_tcp_header <=   tcp_hdr_00 & tcp_hdr_01 & tcp_hdr_10 & tcp_hdr_11;
+                            o_keep <= x"1111_1111";
+                            o_data_valid <= '1';
                         end if;
 
                     when CALC_CARRY =>
                         tcp_hdr_checksum <= pre_sum(19 downto 16) + pre_sum(15 downto 0);
 
-                        tcp_state <= SEND_HDR0;
-
-                    when SEND_HDR0 =>
-                        o_tcp_header <=   tcp_hdr_00 & tcp_hdr_01 & tcp_hdr_10 & tcp_hdr_11;
-                        o_keep <= x"1111_1111";
-                        o_data_valid <= '1';
-
-                        tcp_state <= SEND_HDR1;
-
-                    when SEND_HDR1 =>
+                        -- HDR1:
                         o_tcp_header <= tcp_hdr_20 & tcp_hdr_21 & ip_hdr_30 & ip_hdr_31;
                         o_keep <= x"1111_1111";
                         o_data_valid <= '1';
 
-                        tcp_state <= SEND_HDR2;
+                        tcp_state <= SEND_HDR0;
 
                     when SEND_HDR2 =>
-                        o_tcp_header <= tcp_hdr_checksum & ip_hdr_41;
+                        o_tcp_header <= tcp_hdr_checksum & ip_hdr_41 & x"0000_0000";
+                        
                         o_keep <= x"1111_1111";
                         o_data_valid <= '1';
+                        o_data_last <= '1';
+                        o_tcp_rdy <= '1';
 
                         tcp_state <= IDLE;
 
                     when others =>
                         o_keep <= x"0000_0000";
                         o_data_valid <= '0';
+                        o_data_last <= '0';
+                        o_tcp_rdy <= '0';
+
                         tcp_state <= IDLE;
 
                 end case;
