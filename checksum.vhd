@@ -835,8 +835,8 @@ application is actual market stuff we'll be doing.
 so you'll have to do session first to make establish a connection..
 
 standard header
-8 beginstring       66 69 78 34 2e 32       --FIX4.2
-9 bodylength
+8 beginstring       46 49 58 2e 34 2e 32       --FIX4.2
+9 bodylength            Message length, in bytes, f
 35 msgtype              D ( order single),
 49 sendercompID
 56 targetcompID
@@ -853,3 +853,60 @@ msg structure
 
 trailer
 10 checksum
+
+
+
+8=FIX.4.2|     
+9=49|             
+length is everything after the length field EXCLUDING the cheksum
+
+35=5|                             5
+34=1|                           5
+49=ARCA|                           8
+52=20150916-04:14:05.306|             25
+56=TW|                             6
+stop
+
+10=157|
+
+38 3d 46 49 58 2e 34 2e 32 7c
+39 3d 34 39 7c
+33 35 3d 35 7c
+33 34 3d 31 7c
+34 39 3d 41 52 43 41 7c
+35 32 3d 32 30 31 35 30 39 31 36 2d 30 34 3a 31 34 3a 30 35 2e 33 30 36 7c
+35 36 3d 54 57 7c
+
+
+
+if we're going to send the msg, we need to know the length ahead of time.
+
+
+checksum 
+subtract or replace the 7c with 0x01, ascii for SOH. the delimiter, there are 7x 7c so +7
+= 0xc96 = 3222 + 7 = 3229 mod 256 = 157 decimal -> 0x00_00_9D = 3byte = 24bit
+
+Three byte, simple checksum.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
