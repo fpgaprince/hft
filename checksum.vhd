@@ -806,7 +806,9 @@ but essentially everything else is "constant"
 
 
 
+Example: Order Cancel Request
 
+8=FIX.4.2 | 9=111 | 35=F | 49=fix_client | 56=CQG_Gateway | 34=4 | 52=20061124-16:38:47.099 | 41=S14 | 37=1109674 | 11=S15 | 1=286 | 60=20061124-16:38:05 | 10=047 |
 
 fix 4.2
 
@@ -819,11 +821,14 @@ standard header
 34 msgseqnum
 52 sendingtime
 
-msg structure
+msg body
+1 account*
+11 ClOrdID
+37 OrderID*
 41 origclordid
-11 clordid
-55 symbol
-54 side
+
+55 symbol not req
+54 side not req => 
 60 transacttime
 
 trailer
@@ -834,6 +839,12 @@ session is like starting it, logon/logoff.
 application is actual market stuff we'll be doing.
 so you'll have to do session first to make establish a connection..
 
+
+Example: New Order Single
+
+8=FIX.4.2 | 9=141 | 35=D | 49=fix_client | 56=CQG_Gateway | 34=4 | 52=20061124-15:51:12.093 | 1=286 | 11=MS24 | 55=F.US.TYAZ06 | 54=2 | 60=20061124-15:50:51 | 38=5 | 40=4 | 44=1.22 | 77=O | 20154=S | 99=1.24 | 10=045 |
+
+
 standard header
 8 beginstring       46 49 58 2e 34 2e 32       --FIX4.2
 9 bodylength            Message length, in bytes, f
@@ -843,12 +854,14 @@ standard header
 34 msgseqnum
 52 sendingtime
 
-msg structure
+msg body
+1 account
 11 clordid
 21 handlinst
 55 symbol
 54 side                 eg. 1 = buy, 2 = sell, 1-9
 60 transacttime
+38 OrderQty
 40 ordtype
 
 trailer
@@ -898,6 +911,12 @@ Three byte, simple checksum.
 
 
 
+
+8=FIX.4.2 | 9=141|
+
+35=D|49=fix_client|56=CQG_Gateway|34=4|52=20061124-15:51:12.093|1=286|11=MS24|55=F.US.TYAZ06|54=2|60=20061124-15:50:51|38=5|40=4|44=1.22|77=O|20154=S|99=1.24|
+
+10=045 |
 
 
 
