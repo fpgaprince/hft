@@ -855,18 +855,21 @@ trailer
 10 checksum
 
 
-
+--header
 8=FIX.4.2|     
 9=49|             
 length is everything after the length field EXCLUDING the cheksum
 
 35=5|                             5
-34=1|                           5
-49=ARCA|                           8
-52=20150916-04:14:05.306|             25
+49=BBT|                           8
 56=TW|                             6
-stop
+34=1|                           5
+52=20150916-04:14:05.306|             25
+stop checksum
 
+--in this ex. no body.
+
+--trailer
 10=157|
 
 38 3d 46 49 58 2e 34 2e 32 7c
