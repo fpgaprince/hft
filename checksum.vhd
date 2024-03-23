@@ -506,7 +506,7 @@ signal susum0123                : std_logic_vector(35 downto 0);
 signal sum_fold                : std_logic_vector(19 downto 0);
 
 type state_type is (IDLE, CALC_CARRY, SEND_HDR0, SEND_HDR1, SEND_HDR2);
-signal ip_state : state_type := IDLE;    
+signal ip_state : state_type := IDLE;
 begin
 
 --pre calc the pseudo header and actual header, leaving the datachecksum for
@@ -561,7 +561,7 @@ process(clk) begin
 
         --3clk
         psum012 <= psum01 + psum2;
-        
+
         sum0123 <= sum01 + sum23;
 
         --4clk
@@ -597,7 +597,7 @@ process(clk) begin
 
                 when SEND_HDR2 =>
                     o_tcp_header <= tcp_hdr_checksum & ip_hdr_41 & x"0000_0000";
-                
+
                     tcp_state <= IDLE;
 
                 when others =>
@@ -621,7 +621,7 @@ process(all) begin
                 o_data_valid <= '1';
                 o_data_last <= '0';
                 o_tcp_rdy <= '0';
-            else 
+            else
                 o_tcp_header <= (others '0');
                 o_keep <= x"0000_0000";
                 o_data_valid <= '0';
@@ -639,7 +639,7 @@ process(all) begin
 
         when SEND_HDR2 =>
             o_tcp_header <= tcp_hdr_checksum & ip_hdr_41 & x"0000_0000";
-        
+
             o_keep <= x"1111_1111";
             o_data_valid <= '1';
             o_data_last <= '1';
@@ -654,7 +654,7 @@ process(all) begin
 
     end case;
 end process;
-end rtl;  
+end rtl;
 
 -- you need to make the output combinatorial or zero delay
 
@@ -828,7 +828,7 @@ msg body
 41 origclordid
 
 55 symbol not req
-54 side not req => 
+54 side not req =>
 60 transacttime
 
 trailer
@@ -869,8 +869,8 @@ trailer
 
 
 --header
-8=FIX.4.2     
-9=49             
+8=FIX.4.2
+9=49
 length is everything after the length field EXCLUDING the cheksum
 
 35=5                             5
@@ -898,7 +898,7 @@ stop checksum
 if we're going to send the msg, we need to know the length ahead of time.
 
 
-checksum 
+checksum
 subtract or replace the 7c with 0x01, ascii for SOH. the delimiter, there are 7x 7c so +7
 = 0xc96 = 3222 + 7 = 3229 mod 256 = 157 decimal -> 31 30 3d 31 35 37 01
 
@@ -911,7 +911,7 @@ Three byte, simple checksum.
 b/c our order book will only monitor subset equities.
 and we only want a subset of commands/instructions/messages residing on the fpga for promptness.
 the algo needs to only set a few certain fields or tags, the rest should be preset and semi-deterministic.
-bram widths up to 
+bram widths up to
 512 Bytes, 4096 bits
 256     2048 bits
 128     1024 bits
@@ -921,7 +921,7 @@ strlen * 8 = num_bytes
 
 4kx4, 2kx9, 1kx18, and 512x36 primitives these are bits!, 4k bits
 
-we can fit entire fix msg in BRAM. or atleast most of it. and then only updating time tags 
+we can fit entire fix msg in BRAM. or atleast most of it. and then only updating time tags
     but we dont want to have redundant information. we store what is constant once. and call it.
     then we concatenate the time.
 
@@ -930,22 +930,53 @@ we can fit entire fix msg in BRAM. or atleast most of it. and then only updating
 
     furthermore for 8bit add, i think we can parallelize and tree down to a value. we dont have to fold like the tcp/ip, we dont care about excess 8bits.
     we dont care about the carries after the 7th bit, but we do care about the internal ones!
-    
+
 maybe based on strategies =>  determined by devs =>  we keep the HIGHest risk orders in the fpga, with triggers set up. such that if we needed to cancel.
 the information is pre-populated. we know everything! including the length. everything except the time stamp of when this occurs.
 i think with the redundancy in order => we can read everything out in 1 cycle.
-we cna have [partial_sum][#bytes][msg] or something liek that in RAM. so you have information, and actual data.    
+we cna have [partial_sum][#bytes][msg] or something liek that in RAM. so you have information, and actual data.
 
 i imagine the algo has to look at specific symbols or buckets => you cant look at everything at once.
 you have to look at one symbol with many different variables that affect it., there for this symbol, its strategy purchase or whatever is known.
-or potential buy or cancel will reside in the ram. its location known by this algo. so say you are monitoring 20 symbols. you have 20algo engines. with accompanying RAM and potential buy, sell cancel change whatver => 
+or potential buy or cancel will reside in the ram. its location known by this algo. so say you are monitoring 20 symbols. you have 20algo engines. with accompanying RAM and potential buy, sell cancel change whatver =>
 
 i think the body len can be pre determined => because while the time is undertermined, it will use up the same amount of bytes.
 
-8=FIX.4.29=11135=F49=fix_client56=CQG_Gateway34=452=20061124-16:38:47.09941=S1437=110967411=S151=28660=20061124-16:38:0510=047
-38 3d 46 49 58 2e 34 2e 32 01 39 3d 31 31 31 01 33 35 3d 46 01 34 39 3d 66 69 78 5f 63 6c 69 65 6e 74 01 35 36 3d 43 51 47 5f 47 61 74 65 77 61 79 01 33 34 3d 34 01 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01 34 31 3d 53 31 34 01 33 37 3d 31 31 30 39 36 37 34 01 31 31 3d 53 31 35 01 31 3d 32 38 36 01 36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01 31 30 3d 30 34 37 01
+8=FIX.4.29=11135=F49=BBT56=OTHER34=4
+38 3d 46 49 58 2e 34 2e 32 01 39 3d 31 31 31 01 33 35 3d 46 01 34 39 3d 66 69 78 5f 63 6c 69 65 6e 74 01 35 36 3d 43 51 47 5f 47 61 74 65 77 61 79 01 33 34 3d 34       
+len = 126/3 = 42 bytes
+partial sum = 0xe72
 
-fix_msg <= ram_out(41*8-1+31*8 downto 31*8) & SendingTime & ram_out(31*8-1 downto 0) & transacttime
+41=S1437=110967411=S151=286
+34 31 3d 53 31 34 01 33 37 3d 31 31 30 39 36 37 34 01 31 31 3d 53 31 35 01 31 3d 32 38 36 01 
+len = 93/3 =31 byte
+partial sum = 0x5d7
+
+partial total = 0xe72 + 0x5d7 = 0x1449 "49"
+
+
+TAG_SENDINGTIME <= x"35323d";       --52
+TAG_TRANSACTTIME <= x"36303d";      --60
+TAG_FIXCHECKSUM <= x"31303d";       --10
+SOH <= x"01";
+
+process(clk) begin
+    if(rising_edge(clk)) then
+        sendingTime <= TAG_SENDINGTIME & i_sendingTime & SOH;
+        transactTime <= TAG_TRANSACTTIME & i_transactTime & SOH;
+
+        sendingTime_reg <= i_sendingTime;       --22bytes
+        transactTime_reg <= i_transactTime;     --18bytes
+
+        fix_msg <= ram_out(42*8-1+31*8 downto 31*8) & sendingTime & ram_out(31*8-1 downto 0) & transactTime & TAG_FIXCHECKSUM & fix_checksum & x"01";
+    end if;
+end process;
+
+for simple example =>  use ROM pre populate.
+
+sendingTime_reg
+transactTime_reg
+
 
 Example: Order Cancel Request
 --header
@@ -953,17 +984,17 @@ Example: Order Cancel Request
 9=111                       --changes, len = 6                 body_len        : std_logic_vector(47 downto 0)     <= 39 3d    31 31 31 01;                --variable
 35=F                   --len=5                                 msg_type        : std_logic_vector(39 downto 0)     <= 33 35 3d 46 01;
 49=BBT                 --len=7                                 SenderCompID    : std_logic_vector(55 downto 0)     <= 34 39 3d 42 42 54 01;                -- we are always the sender..
-56=OTHR                          --len=8                       TargetCompID    : std_logic_vector()                <= 35 36 3d 4f 54 48 52 01              --variable string 32.
+56=OTHER                          --len=9                       TargetCompID    : std_logic_vector()                <= 35 36 3d 4f 54 48 52 01              --variable string 32.
 34=4                                   --len= 5                MsgSeqNum       : std_logic_vector(31 downto 0)                <= pad zeross 33 34 3d 34 01
-52=20061124-16:38:47.099               --len = 25              SendingTime     : std_logic_vector(199 downto 0)    <= 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01   --variable
+52=20061124-16:38:47.099               --len = 25-3              SendingTime     : std_logic_vector(199 downto 0)    <= 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01   --variable
 -- above in ms
 
--- body 
+-- body
 41=S14                         origclordid     : std_logic_vector(55 downto 0)            34 31 3d 53 31 34 01                                                 --7 	String(64) Last accepted ClOrdID in an order chain that this message modifies =>  does that mean we have been tracking this?
 37=1109674                     OrderID         : std_logic_vector(87 downto 0)            33 37 3d 31 31 30 39 36 37 34 01                                     --11      	String(32)  Unique identifier for order as assigned by the CQG gateway.
 11=S15                         ClOrdID         : std_logic_vector(55 downto 0)            31 31 3d 53 31 35 01                                                 --7          variable String(64) New and unique ID for this request.
 1=286                          account         : std_logic_vector(47 downto 0)            31 3d 32 38 36 01                                                    --6                String(256)
-60=20061124-16:38:05           transacttime    : std_logic_vector(167 downto 0)           36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01       --21        variable
+60=20061124-16:38:05           transacttime    : std_logic_vector(167 downto 0)           36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01       --21-3        variable
 -- above in whole sec
 
 52  Time of message transmission (always expressed in UTC, Universal Time Coordinated, also known as GMT). Curre
@@ -978,7 +1009,7 @@ Example: Order Cancel Request
 
 we get the time input =>  36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01 =>  0x40c
 
-5bc + 40c = 
+5bc + 40c =
 9c8, c8 = 9c8 good
 
 35 36 3d 43 51 47 5f 47 61 74 65 77 61 79 01 33 34 3d 34 01 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01 34 31 3d 53 31 34 01 33 37 3d 31 31 30 39 36 37 34 01 31 31 3d 53 31 35 01 31 3d 32 38 36 01 36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01
@@ -995,14 +1026,14 @@ sum = 0x1A10
 34 31 3d 4d 44 4e 31 01 33 37 3d 30 33 32 31 32 30 32 34 01 31 31 3d 4d 44 4e 31 01 31 3d 37 31 34 01 36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01
 sum = 0xab0
 
-41=MDN137=0321202411=MDN11=714      -- constant 
+41=MDN137=0321202411=MDN11=714      -- constant
 60=20061124-16:38:05                   -- changing
 
 --trailer checksum
 10=047                                 -- changing
 
 to do:
-determine vector size for fields, just read the spec => 
+determine vector size for fields, just read the spec =>
 
 
 
@@ -1010,7 +1041,7 @@ basically calculating the msg checksum is going to take the longest. but a decis
 to the TCP and IP blocks in which they calculate their partial header/checksum and go on standby.
 when FIX finishes its calculation, it passes this value to the TCP to complete it's checksum calc.
 somewhere during this time you can start sending the IP header to ETH MAC.
-by the time you transfer IP header 3cycles, you will have TCP ready and then another 3cycles. 
+by the time you transfer IP header 3cycles, you will have TCP ready and then another 3cycles.
 then start pumping the FIX msg out.
 
 
@@ -1020,13 +1051,13 @@ then start pumping the FIX msg out.
 
 
 The checksum must be calculated by summing the binary value of each octet from the start of the BeginString(8) field
-up to and including the end of field delimiter () of the field immediately preceding the CheckSum(10) field, 
+up to and including the end of field delimiter () of the field immediately preceding the CheckSum(10) field,
 then transforming this value using a modulo 256.
 
 
 
 
-for 8 bit adder you can use a 16bit register, but you dont really have to => 
+for 8 bit adder you can use a 16bit register, but you dont really have to =>
 you can just keep adding the bytes anything that goes over 8 bit gets "truncated"
 anything over 8bits are the carries, which we truncate in the end anyways.
 
@@ -1043,7 +1074,7 @@ need to check why they use FIX over the other ones, what are pros cons.
 ASK BRIAN
 which market is BB already in and which are they trying to take a piece of.
 
-do you use SHA hash algorithms to create hash keys => . look up SHA first => 
+do you use SHA hash algorithms to create hash keys => . look up SHA first =>
 
 
 
