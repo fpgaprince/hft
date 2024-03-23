@@ -942,40 +942,84 @@ or potential buy or cancel will reside in the ram. its location known by this al
 
 i think the body len can be pre determined => because while the time is undertermined, it will use up the same amount of bytes.
 
+original => 
+8=FIX.4.29=11135=F49=BBT56=OTHER34=452=20061124-16:38:47.09941=S1437=110967411=S151=28660=20061124-16:38:05
+38 3d 46 49 58 2e 34 2e 32 01 39 3d 31 31 31 01 33 35 3d 46 01 34 39 3d 42 42 54 01 35 36 3d 4f 54 48 45 52 01 33 34 3d 34 01 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01 34 31 3d 53 31 34 01 33 37 3d 31 31 30 39 36 37 34 01 31 31 3d 53 31 35 01 31 3d 32 38 36 01 36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01
+
+10=047
+
+
 8=FIX.4.29=11135=F49=BBT56=OTHER34=4
-38 3d 46 49 58 2e 34 2e 32 01 39 3d 31 31 31 01 33 35 3d 46 01 34 39 3d 66 69 78 5f 63 6c 69 65 6e 74 01 35 36 3d 43 51 47 5f 47 61 74 65 77 61 79 01 33 34 3d 34       
+38 3d 46 49 58 2e 34 2e 32 01 39 3d 31 31 31 01 33 35 3d 46 01 34 39 3d 42 42 54 01 35 36 3d 4f 54 48 45 52 01 33 34 3d 34 01 
 len = 126/3 = 42 bytes
-partial sum = 0xe72
+left_partial sum = 0x89c
 
 41=S1437=110967411=S151=286
 34 31 3d 53 31 34 01 33 37 3d 31 31 30 39 36 37 34 01 31 31 3d 53 31 35 01 31 3d 32 38 36 01 
 len = 93/3 =31 byte
-partial sum = 0x5d7
+right_partial sum = 0x5d7
 
-partial total = 0xe72 + 0x5d7 = 0x1449 "49"
+stored_partial_sum = 0x89c + 0x5d7 = 0xe73 "73"     -- this will already be in the ram/rom, precalculated
 
 
-TAG_SENDINGTIME <= x"35323d";       --52
-TAG_TRANSACTTIME <= x"36303d";      --60
-TAG_FIXCHECKSUM <= x"31303d";       --10
+let..
+-- 20061124-16:38:47.099
+i_sendingTime = x"32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39";
+-- 20061124-16:38:05
+i_transactTime = x"32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35";
+
+TAG_SENDINGTIME <= x"35 32 3d";       -- 52=
+TAG_TRANSACTTIME <= x"36 30 3d";      -- 60=
+TAG_FIXCHECKSUM <= x"31 30 3d";       -- 10=
 SOH <= x"01";
 
 process(clk) begin
     if(rising_edge(clk)) then
-        sendingTime <= TAG_SENDINGTIME & i_sendingTime & SOH;
-        transactTime <= TAG_TRANSACTTIME & i_transactTime & SOH;
+        if (order_valid) then
+            sendingTime <= TAG_SENDINGTIME & i_sendingTime & SOH;           --3 + 22 + 1 = 26bytes
+            -- 52=20061124-16:38:47.099
+            -- 35 32 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 34 37 2e 30 39 39 01
 
-        sendingTime_reg <= i_sendingTime;       --22bytes
-        transactTime_reg <= i_transactTime;     --18bytes
-
-        fix_msg <= ram_out(42*8-1+31*8 downto 31*8) & sendingTime & ram_out(31*8-1 downto 0) & transactTime & TAG_FIXCHECKSUM & fix_checksum & x"01";
+            transactTime <= TAG_TRANSACTTIME & i_transactTime & SOH;        --3 + 18 + 1 = 22bytes
+            -- 60=20061124-16:38:05
+            -- 36 30 3d 32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35 01
+        end if;       
     end if;
 end process;
+    
+fix_msg <= ram_out(42*8-1+31*8 downto 31*8) & sendingTime & ram_out(31*8-1 downto 0) & transactTime & TAG_FIXCHECKSUM & fix_checksum & x"01";
 
-for simple example =>  use ROM pre populate.
 
-sendingTime_reg
-transactTime_reg
+-- for simple example =>  use ROM pre populate.
+-- calculate on arrival.
+-- the time is 26 + 22 = 48bytes, parallel adds =>  48>24>12>6>3>1.5>0 = 7 cycles
+-- 26, 13, 6.5, 3.25, 1.625, 0
+-- 22, 11, 5.5, 2.75, 1.375, 0
+-- they individually take6, but you have to combine for a 7th. so 7 either way.. 
+
+sendingTime checksum = 0x4e3
+transactTime checksum = 0x40c
+time_partial_sum = 0x8ef            --separate add is correct
+
+final_sum = stored_partial_sum + time_partial_sum = 0xe73 + 0x8ef = 0x1762
+-- 0x1762 from full fix msg => 
+
+fix_msg <= fix_msg & TAG_FIXCHECKSUM & final_sum & SOH;
+
+--double check 9, length of entire msg => 
+--time adder
+--state machine.
+--coordinate timing betwene fix, tcp and ip. determine when exactly to kick off.
+
+
+
+i think, because we have several "symbol/product" management with their own blocks monitoring everything separately.
+when algo determines hey do this, maybe that is when we set one of the time. TransactTime, 60 part of body
+it gets queud up in a fifo because we only have ONE TCP/IP ETH output
+when it is read out of process by FIFO , we update the final "send time" SendingTime, 52 part of header
+
+
+
 
 
 Example: Order Cancel Request
