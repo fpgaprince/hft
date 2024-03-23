@@ -15,6 +15,7 @@ entity ipv4_header is
         --
         --everything below =>  put into a record
         i_order_valid             : in std_logic_vector(3 downto 0);
+        i_rd_addr                   : in std_logic_vector(7 downto 0);
         i_sendingTime                 : in std_logic_vector(167 downto 0);
         i_transactTime                : in std_logic_vector(143 downto 0)
     );
@@ -79,11 +80,14 @@ entity ipv4_header is
     stored_partial_sum = 0x89c + 0x5d7 = 0xe73 "73"     -- this will already be in the ram/rom, precalculated
     
     -- 73bytes = 584,   + # byte separator + 2byte bot half length + 2 byte top half = 2 bytes partial sum = 6*8bit = 48bits,  1023 downto 976
-    584 + 48 bits = 632, 1024-632 = 392..
+    -- 584 + 48 bits = 632, 1024-632 = 392..
 
     constant ZEROS : std_logic_vector(391 downto 0) := (others => '0');
     signal ram_out : std_logic_vector(1023 downto 0) := x"0E73_002A_001F" & ZEROS & x"383d4649582e342e3201393d3131310133353d460134393d4242540135363d4f544845520133343d340134313d5331340133373d313130393637340131313d53313501313d32383601";
-
+    
+    signal top_len, bot_len : std_logic_vector(15 downto 0);
+    top_len <= natural(ram_out(1007 downto 992));
+    bot_len <= natural(ram_out(991 downto 976));
     
     -- let..
     -- -- 20061124-16:38:47.099
@@ -91,10 +95,10 @@ entity ipv4_header is
     -- -- 20061124-16:38:05
     -- i_transactTime = x"32 30 30 36 31 31 32 34 2d 31 36 3a 33 38 3a 30 35";                     -- 18bytes, 144 -> 143 downto 0
     
-    TAG_SENDINGTIME <= x"35 32 3d";       -- 52=
-    TAG_TRANSACTTIME <= x"36 30 3d";      -- 60=
-    TAG_FIXCHECKSUM <= x"31 30 3d";       -- 10=
-    SOH <= x"01";
+    constant TAG_SENDINGTIME <= x"35323d";       -- 52=
+    constant TAG_TRANSACTTIME <= x"36303d";      -- 60=
+    constant TAG_FIXCHECKSUM <= x"31303d";       -- 10=
+    constant SOH <= x"01";
     
     process(clk) begin
         if(rising_edge(clk)) then
@@ -110,7 +114,13 @@ entity ipv4_header is
         end if;
     end process;
         
-    fix_msg <= ram_out(42*8-1+31*8 downto 31*8) & sendingTime & ram_out(31*8-1 downto 0) & transactTime & TAG_FIXCHECKSUM & fix_checksum & x"01";
+    -- top 42, *8=336 = 335 downto 0            therefore => . 583 downto 248
+    -- bot 31 len, 31*8=248, 247 downto 0
+    fix_msg <=  ram_out( (top_len+bot_len)*8-1 downto bot_len*8)    & sendingTime & 
+                ram_out(bot_len*8-1 downto 0)                       & transactTime & TAG_FIXCHECKSUM & fix_checksum & SOH;
+                
+    -- fix_msg <=  ram_out(42*8-1+31*8 downto 31*8)    & sendingTime & 
+    --             ram_out(31*8-1 downto 0)            & transactTime & TAG_FIXCHECKSUM & fix_checksum & SOH;
     
     
     -- for simple example =>  use ROM pre populate.
